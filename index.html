@@ -28,6 +28,8 @@
       --color: RGB(255, 255, 255);
       --color-bg: RGB(123, 198, 156);
       --stroke-width: 0.75;
+      --pill-fg: var(--color);
+      --pill-bg: var(--color-bg);
     }
 
     html {
@@ -46,13 +48,7 @@
       overflow: hidden;
       background: var(--color-bg);
       cursor: default;
-      animation:forwards backgroundFade 1s ease-in-out;
       user-select:none;
-    }
-
-    @keyframes backgroundFade{
-      from { background-color: var(--color); }
-      to { background-color: var(--color-bg); }
     }
 
     /* sentinel gives the safe-area-adjusted floor y */
@@ -72,6 +68,7 @@
       width: 10px;
       height: 10px;
       border-radius: 50%;
+      opacity: 0;
       background: var(--color);
       border: none;
       padding: 0;
@@ -80,27 +77,53 @@
       flex-shrink: 0;
     }
 
-    #nav-link {
+    #nav-pair {
       position: fixed;
       top: 0;
       left: 0;
       z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
       font-family: "Familjen Grotesk", sans-serif;
       font-size: 14px;
       white-space: nowrap;
-      color: var(--color-bg);
       text-decoration: none;
-      border-radius: 10px;
+      border-radius: 16px;
       padding: 0px 8px 2px 8px;
-      border: 1px solid var(--color);
-      background-color: var(--color);
+      border: 1px solid var(--pill-fg);
       cursor: pointer;
-      transition: background-color 0.15s ease, color 0.15s ease;
+      transition: background-color 0.15s cubic-bezier(.38,0,.1,1), color 0.15s cubic-bezier(.38,0,.1,1), border-radius 0.15s cubic-bezier(.38,0,.1,1);
     }
 
-    #nav-link:hover {
+    .pill:hover,
+    .pill.pill-active {
+      border-radius: 0;
+    }
+
+    .pill-fill {
+      color: var(--pill-bg);
+      background-color: var(--pill-fg);
+    }
+
+    .pill-fill:hover {
       background-color: transparent;
-      color: var(--color);
+      color: var(--pill-fg);
+    }
+
+    .pill-outline {
+      color: var(--pill-fg);
+      background-color: transparent;
+    }
+
+    .pill-outline:hover {
+      background-color: var(--pill-fg);
+      color: var(--pill-bg);
     }
 
     #nav-size {
@@ -112,12 +135,13 @@
       font-size: 14px;
       white-space: nowrap;
       color: var(--color);
+      opacity: 0;
       pointer-events: none;
     }
 
     @media (max-width: 600px) {
       #nav-size { display: none; }
-      #nav-link { font-size: 13px; }
+      .pill { font-size: 13px; }
     }
 
     #scene {
@@ -173,10 +197,19 @@
       to { opacity: 1; }
     }
 
+    #g-n, #g-e1, #g-e2, #g-m {
+      opacity: 0;
+      animation: fadeIn 0.5s cubic-bezier(.38,0,.1,1) forwards;
+    }
+    #g-n  { animation-delay: 0s; }
+    #g-e1 { animation-delay: 0.1s; }
+    #g-e2 { animation-delay: 0.2s; }
+    #g-m  { animation-delay: 0.3s; }
+
     .extra-ui {
       opacity: 0;
-      animation: fadeIn 1s ease-in-out forwards;
-      animation-delay: 2s;
+      animation: fadeIn 0.7s ease-in-out forwards;
+      animation-delay: 0.8s;
     }
 
     #wishlist-catcher {
@@ -201,24 +234,28 @@
       overflow-x: hidden;
       display: none;
       flex-direction: column;
-      min-height: 320px;
       padding: 32px;
+      --pill-fg: var(--color-bg);
+      --pill-bg: var(--color);
     }
 
     #wishlist-box.active { display: flex; }
+
+    #wishlist-box:not(.mode-contact) #wl-contact-content { display: none; }
+    #wishlist-box.mode-contact #wl-games-content { display: none; }
 
     #wishlist-box .wl-table {
       width: 100%;
       border-collapse: collapse;
       font-size: 16px;
       line-height: 1.4;
-      margin-top: auto;
+      margin-top: 32px;
     }
 
     #wishlist-box .wl-table td {
       text-align: left;
       font-weight: normal;
-      padding: 8px 0;
+      padding: 16px 0;
       vertical-align: baseline;
       border-top: 1px solid color-mix(in srgb, var(--color-bg) 35%, transparent);
       border-bottom: 1px solid color-mix(in srgb, var(--color-bg) 35%, transparent);
@@ -230,16 +267,14 @@
     }
 
     #wishlist-box .wl-table td:last-child {
-      width: 1%;
-      white-space: nowrap;
-      text-align: right;
+      text-align: left;
     }
 
-    @media (max-width: 600px) {
-      #wishlist-box .wl-table td:last-child {
-        width: auto;
-        white-space: normal;
-      }
+    #wishlist-box .wl-links {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 6px 6px;
     }
 
     #wishlist-box .wl-logo {
@@ -248,6 +283,7 @@
       width: auto;
       color: inherit;
       align-self: center;
+      flex-shrink: 0;
     }
 
     #wishlist-box .wl-table tr {
@@ -255,24 +291,54 @@
       transition: opacity 0.3s cubic-bezier(.7,0,.07,1);
     }
 
-    #wishlist-box .wl-link {
-      color: inherit;
-      text-decoration: underline;
-      text-underline-offset: 2px;
-      cursor: pointer;
+    @media (max-width: 600px) {
+      #wishlist-box {
+        padding: 24px;
+      }
+
+      #wishlist-box .wl-table {
+        font-size: 14px;
+      }
+
+      #wishlist-box .wl-table td:first-child {
+        padding-right: 12px;
+      }
+
+      #wishlist-box .wl-contact-line {
+        font-size: 14px;
+      }
     }
 
     #wishlist-box .wl-note {
       font-size: 16px;
       line-height: 1.5;
-      margin-top: auto;
+      margin-top: 32px;
       opacity: 0;
       transition: opacity 0.3s cubic-bezier(.7,0,.07,1);
       text-align: center;
     }
 
     #wishlist-box.content-visible .wl-table tr,
-    #wishlist-box.content-visible .wl-note { opacity: 1; }
+    #wishlist-box.content-visible .wl-note,
+    #wishlist-box.content-visible .wl-contact-line { opacity: 1; }
+
+    #wishlist-box .wl-contact-line {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      margin-top: 32px;
+      opacity: 0;
+      transition: opacity 0.3s cubic-bezier(.7,0,.07,1);
+      text-align: center;
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
+    #wishlist-box .wl-contact-line + .wl-contact-line {
+      margin-top: 24px;
+    }
 
     #wishlist-close {
       position: absolute;
@@ -287,7 +353,7 @@
       line-height: 1;
       cursor: pointer;
       opacity: 0;
-      transition: opacity 0.3s cubic-bezier(.7,0,.07,1), background-color 0.15s ease, color 0.15s ease;
+      transition: opacity 0.3s cubic-bezier(.7,0,.07,1), background-color 0.15s cubic-bezier(.38,0,.1,1), color 0.15s cubic-bezier(.38,0,.1,1);
     }
 
     #wishlist-box.content-visible #wishlist-close { opacity: 1; }
@@ -300,19 +366,20 @@
 </head>
 <body>
   <div id="nav-sentinel"></div>
-  <button id="nav-circle" class="extra-ui"></button>
-  <a id="nav-link">Games</a>
-  <span id="nav-size" class="extra-ui"></span>
+  <button id="nav-circle"></button>
+  <div id="nav-pair" class="extra-ui">
+    <a id="nav-link" class="pill pill-fill">Games</a>
+    <a id="nav-contact" class="pill pill-outline">Contact</a>
+  </div>
+  <span id="nav-size"></span>
 
   <svg id="scene" class="locked">
-    <!-- 3 sets of 4 lines: n↔e1, e1↔e2, e2↔m -->
     <line id="s1-tl"/><line id="s1-tr"/>
     <line id="s1-bl"/><line id="s1-br"/>
     <line id="s2-tl"/><line id="s2-tr"/>
     <line id="s2-bl"/><line id="s2-br"/>
     <line id="s3-tl"/><line id="s3-tr"/>
     <line id="s3-bl"/><line id="s3-br"/>
-    <!-- rects in reading order: n, e-1, e-2, m -->
     <g id="g-n">
       <rect id="r-n" fill="none"/>
       <svg id="img-n" preserveAspectRatio="xMidYMid meet"></svg>
@@ -335,15 +402,51 @@
   <div id="wishlist-box">
     <button id="wishlist-close" aria-label="Close">&times;</button>
     <svg id="img-logo" class="wl-logo" preserveAspectRatio="xMinYMid meet"></svg>
+    <div id="wl-games-content">
     <table class="wl-table">
       <tbody>
         <tr>
           <td>GRAIN ROT</td>
-          <td><a class="wl-link" href="https://store.steampowered.com/app/4450620/GRAIN_ROT/?utm_source=neem&amp;utm_medium=website&amp;utm_campaign=publisher_site&amp;utm_content=grain_rot" target="_blank" rel="noopener">Steam  &#8599;&#xFE0E;</a></td>
+          <td>
+            <div class="wl-links">
+              <a class="pill pill-outline" href="https://store.steampowered.com/app/4450620/GRAIN_ROT/?utm_source=neem&amp;utm_medium=website&amp;utm_campaign=publisher_site&amp;utm_content=grain_rot" target="_blank" rel="noopener">Steam</a>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td>Ghosts of Tabor</td>
+          <td>
+            <div class="wl-links">
+              <a class="pill pill-outline" href="https://www.meta.com/en-gb/experiences/ghosts-of-tabor/7614022262006379/" target="_blank" rel="noopener">Quest</a>
+              <a class="pill pill-outline" href="https://store.steampowered.com/app/1957780/Ghosts_of_Tabor/?utm_source=neem&utm_medium=website&utm_campaign=publisher_site&utm_content=ghosts_of_tabor" target="_blank" rel="noopener">Steam</a>
+              <a class="pill pill-outline" href="https://store.playstation.com/en-us/concept/10011844/" target="_blank" rel="noopener">Playstation</a>
+              <a class="pill pill-outline" href="https://store-global.picoxr.com/global/detail/1/7294560799153209349" target="_blank" rel="noopener">Pico</a>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td>Ghosts of Tabor: LEGACY</td>
+          <td>
+            <div class="wl-links">
+              <a class="pill pill-outline" href="https://www.meta.com/experiences/ghosts-of-tabor-legacy/964643299532542/?srsltid=AfmBOooIY-C8ndpRqXfB-ltkQK7wQVvRDLXMhCCmP8LXwWKZkzndKKxc" target="_blank" rel="noopener">Quest</a>
+              <a class="pill pill-outline" href="https://store.steampowered.com/app/4836070/Ghosts_of_Tabor__LEGACY/" target="_blank" rel="noopener">Steam</a>
+            </div>
+          </td>
         </tr>
       </tbody>
     </table>
     <p class="wl-note">More unannounced titles to come.</p>
+    </div>
+    <div id="wl-contact-content">
+      <div class="wl-contact-line">
+        <span>Media and creator requests</span>
+        <a class="pill pill-outline" href="mailto:press@neem.com">press@neem.com</a>
+      </div>
+      <div class="wl-contact-line">
+        <span>General correspondence</span>
+        <a class="pill pill-outline" href="mailto:info@neem.com">info@neem.com</a>
+      </div>
+    </div>
   </div>
 
   <script src="script.js"></script>

@@ -21,6 +21,7 @@ applyTheme(THEMES[themeIdx]);
 
 const PAD = 24;
 const PAD_MOB = 10;
+const NAV_CLEARANCE = 16; // gap kept between the mobile letter stack and the nav pills below it
 const BREAKPOINT = 600;
 const DURATION = 700;
 const DURATION_MOB = 1200;
@@ -30,8 +31,12 @@ const H_FRAC = 0.14;
 const LETTER_PAD = 0.18;
 const SCALE_MIN = 0.3;
 const SCALE_MAX = 3.0;
-const GAPS = [2, 2, -7];
+const GAPS = [2, 2, -14]; // defined in the same ~180-unit glyph space as RATIOS below; scaled by h/GAP_UNIT
+const GAP_UNIT = 180;
 const ASSETS = ['assets/n.svg', 'assets/e-1.svg', 'assets/e-2.svg', 'assets/m.svg'];
+// letters + .extra-ui fade in sequentially (see CSS); shuffle waits until that's done
+const INTRO_SHUFFLE_DELAY = 1800;
+const NAV_REVEAL_MS = 400; // dimensions/colour-changer fade in only after they land in position
 
 const WISHLIST_IDX = 0; // 'n' stays and becomes the box
 const OTHER_IDX = [0, 1, 2, 3].filter(i => i !== WISHLIST_IDX); // the 3 letters that vanish/reappear
@@ -39,6 +44,7 @@ const WISHLIST_CONVERGE_MS = 650;
 const WISHLIST_EXPAND_MS = 550;
 const WISHLIST_CONTENT_MS = 300; // keep in sync with the CSS opacity transition below
 const WISHLIST_GLYPH_FADE_SPEED = 3; // glyphs fade out/in this much faster than the box converges
+const WISHLIST_RESIZE_MS = 280; // tweened box resize between games/contact content
 
 const RATIOS = [173/180, 187/184, 187/184, 267/180];
 const RATIO_SUM = RATIOS.reduce((s, r) => s + r, 0);
@@ -55,12 +61,15 @@ const lineSets = ['s1','s2','s3'].map(s => ({
   br: document.getElementById(`${s}-br`),
 }));
 
-//nav elements — each is independently positioned
+//nav elements — each is independently positioned. Games + Contact live inside
+//navPairEl, which moves as a single unit rather than positioning them separately.
 const navCircleEl = document.getElementById('nav-circle');
+const navPairEl = document.getElementById('nav-pair');
 const navLinkEl = document.getElementById('nav-link');
+const navContactEl = document.getElementById('nav-contact');
 const navSizeEl = document.getElementById('nav-size');
 const navSentinelEl = document.getElementById('nav-sentinel');
-const navEls = [navCircleEl, navLinkEl, navSizeEl];
+const navEls = [navCircleEl, navPairEl, navSizeEl];
 let navAnims = [null, null, null];
 let navHasInitOffset = false;
 
@@ -179,9 +188,10 @@ function xCentered(i) {
   const vw = window.innerWidth, ws = letterWs();
   const h = letterH(), p = h * LETTER_PAD;
   const glyphWs = ws.map(w => w - 2 * p);
-  const total = glyphWs.reduce((s, w) => s + w, 0) + GAPS.reduce((s, g) => s + g, 0);
+  const gaps = GAPS.map(g => g * h / GAP_UNIT);
+  const total = glyphWs.reduce((s, w) => s + w, 0) + gaps.reduce((s, g) => s + g, 0);
   let x = (vw - total) / 2 - p;
-  for (let j = 0; j < i; j++) x += glyphWs[j] + GAPS[j];
+  for (let j = 0; j < i; j++) x += glyphWs[j] + gaps[j];
   return x;
 }
 
@@ -200,6 +210,25 @@ function xScattered(i) {
 function yFromFrac(f) {
   const p = pad();
   return p + f * (window.innerHeight - 2 * p - letterH());
+}
+
+// mobile scattered layout: letters stack into fixed vertical slots (mirrors xScattered)
+// with a random x per letter (mirrors yFromFrac, but per-letter since widths differ).
+// the bottom slot stops short of the nav pills instead of running to the viewport edge.
+function yScattered(i) {
+  const p = pad(), h = letterH();
+  const bottom = navBarGeometry().navTopY - NAV_CLEARANCE;
+  const hs = scales.map(s => h * s);
+  const used = hs.reduce((s, hh) => s + hh, 0);
+  const spacing = (bottom - p - used) / 3;
+  let y = p;
+  for (let j = 0; j < i; j++) y += hs[j] + spacing;
+  return y;
+}
+
+function xFromFrac(i, f) {
+  const p = pad(), vw = window.innerWidth, w = letterH() * RATIOS[i] * scales[i];
+  return p + f * (vw - 2 * p - w);
 }
 
 //store each letter's centre as a fraction of the viewport (scale-aware).
@@ -294,9 +323,18 @@ function positionWishlistBox({ x, y, w, h }) {
   wishlistBoxEl.style.height = `${h}px`;
 }
 
-async function openWishlist() {
+//square off whichever nav pill corresponds to the box's current content;
+//pass null to clear both (box closed, neither is "active")
+function setActivePill(mode) {
+  navLinkEl.classList.toggle('pill-active', mode === 'games');
+  navContactEl.classList.toggle('pill-active', mode === 'contact');
+}
+
+async function openWishlist(mode = 'games') {
   if (wishlistOpen || wishlistBusy) return;
   wishlistBusy = true;
+  wishlistBoxEl.classList.toggle('mode-contact', mode === 'contact');
+  setActivePill(mode);
 
   if (dragging) {
     setGlyphFill(dragging.idx, '', '');
@@ -361,6 +399,7 @@ async function closeWishlist() {
   if (!wishlistOpen || wishlistBusy) return;
   wishlistBusy = true;
   wishlistOpen = false;
+  setActivePill(null);
 
   wishlistBoxEl.classList.remove('content-visible');
   await new Promise(r => setTimeout(r, WISHLIST_CONTENT_MS));
@@ -410,6 +449,38 @@ async function closeWishlist() {
   if (!hasClicked) shuffleAll();
 }
 
+//swap the open box's content (games <-> contact) in three steps: fade out the old
+//text, resize the box to fit the new content, fade in the new text.
+async function switchWishlistContent(mode) {
+  const isContact = mode === 'contact';
+  if (wishlistBoxEl.classList.contains('mode-contact') === isContact) return;
+  if (!wishlistOpen || wishlistBusy) return;
+  wishlistBusy = true;
+
+  // 1. fade out old text
+  wishlistBoxEl.classList.remove('content-visible');
+  await new Promise(r => setTimeout(r, WISHLIST_CONTENT_MS));
+
+  // 2. resize the box to fit the new content. The letter rect underneath is kept in
+  // lockstep every frame (same lerp as the box) so it never grows ahead of the box
+  // and peeks out past its edges.
+  const from = wishlistBoxRect();
+  wishlistBoxEl.classList.toggle('mode-contact', isContact);
+  setActivePill(mode);
+  const to = wishlistBoxRect();
+
+  await tweenStagger(WISHLIST_RESIZE_MS, [WISHLIST_IDX], progress => {
+    const p = progress[WISHLIST_IDX];
+    const box = { x: lerp(from.x, to.x, p), y: lerp(from.y, to.y, p), w: lerp(from.w, to.w, p), h: lerp(from.h, to.h, p) };
+    setBox(WISHLIST_IDX, box.x, box.y, box.w, box.h);
+    positionWishlistBox(box);
+  });
+
+  // 3. fade in new text
+  wishlistBoxEl.classList.add('content-visible');
+  wishlistBusy = false;
+}
+
 //── nav helpers ──────────────────────────────────────────────────────────
 
 //compute where each nav element lands in its final resting position.
@@ -436,7 +507,7 @@ function navBarGeometry() {
 function positionNavElements() {
   if (isMobile()) {
     navHasInitOffset = false;
-    //size is display:none on mobile; only position circle + link
+    //size is display:none on mobile; only position circle + pair
     const { navTopY, navH } = navBarGeometry();
     [0, 1].forEach(i => {
       const pos = navFinalPos(i, navTopY, navH);
@@ -455,7 +526,9 @@ function positionNavElements() {
     return;
   }
 
-  //desktop initial state: group centred just below the neem letters
+  //desktop initial state: centred below the letters. the circle + dimensions readout
+  //are invisible until after the shuffle (see revealNavExtra), so only Games' own
+  //centring is visible here — no need to lay the three out as a non-overlapping row.
   const startY = yCentered() + letterH() + 8;
   const vw = window.innerWidth;
   navEls.forEach(el => {
@@ -495,10 +568,16 @@ async function loadLogo() {
   });
 }
 
-loadLetters().then(() => { positionNavElements(); introTimeoutId = setTimeout(shuffleAll, 2000); });
+loadLetters().then(() => { positionNavElements(); introTimeoutId = setTimeout(shuffleAll, INTRO_SHUFFLE_DELAY); });
 loadLogo();
 
 //── shuffle ──────────────────────────────────────────────────────────────
+
+// dimensions readout + colour-changer dot: hidden until everything's settled into place
+function revealNavExtra(el) {
+  const anim = el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: NAV_REVEAL_MS, easing: 'ease-in-out', fill: 'forwards' });
+  anim.onfinish = () => commitAnim(anim);
+}
 
 function shuffleAll() {
   anims.forEach((a, i) => { commitAnim(a); anims[i] = null; });
@@ -510,11 +589,18 @@ function shuffleAll() {
 
   fracs = fracs.map(() => Math.random());
 
+  const mobile = isMobile();
+  if (mobile) fracsX = fracsX.map(() => Math.random());
+
   let done = 0;
   gs.forEach((g, i) => {
     const box = rs[i].getBoundingClientRect();
     const from = { x: box.left, y: box.top };
-    const to = { x: xScattered(i), y: yFromFrac(fracs[i]) };
+    //mobile stacks letters vertically (fixed row, random x); desktop scatters
+    //them horizontally (fixed column, random y)
+    const to = mobile
+      ? { x: xFromFrac(i, fracsX[i]), y: yScattered(i) }
+      : { x: xScattered(i), y: yFromFrac(fracs[i]) };
     storeFrac(i, to.x, to.y); //track target as proportional position
     anims[i] = g.animate([
       { transform: `translate(${from.x}px, ${from.y}px)` },
@@ -522,7 +608,11 @@ function shuffleAll() {
     ], { duration: duration(), easing: EASING, fill: 'forwards', delay: i * STAGGER });
     anims[i].onfinish = () => {
       commitAnim(anims[i]); anims[i] = null;
-      if (++done === gs.length) { stopLoop(); syncLines(); autoPlaying = false; }
+      if (++done === gs.length) {
+        stopLoop(); syncLines(); autoPlaying = false;
+        // mobile never flies the nav group (already at rest), so reveal it once the letters settle
+        if (mobile) revealNavExtra(navCircleEl);
+      }
     };
   });
 
@@ -542,6 +632,7 @@ function shuffleAll() {
       navAnims[i].onfinish = () => {
         commitAnim(navAnims[i]);
         navAnims[i] = null;
+        if (el !== navPairEl) revealNavExtra(el);
       };
     });
   }
@@ -557,10 +648,18 @@ navCircleEl.addEventListener('click', e => {
   applyTheme(THEMES[themeIdx]);
 });
 
+navContactEl.addEventListener('click', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (wishlistOpen) switchWishlistContent('contact');
+  else openWishlist('contact');
+});
+
 navLinkEl.addEventListener('click', e => {
   e.preventDefault();
   e.stopPropagation();
-  openWishlist();
+  if (wishlistOpen) switchWishlistContent('games');
+  else openWishlist('games');
 });
 
 wishlistCloseEl.addEventListener('click', e => {
